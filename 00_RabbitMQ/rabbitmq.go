@@ -10,9 +10,14 @@ import (
 const (
 	MQURL           = "amqp://double:double@127.0.0.1:5672/test-double"
 	SimpleQueueName = "doubleSimple"
+
+	PubSubExchangeName = "newProduct"
 )
 
-var Done chan bool
+var (
+	Done       chan bool
+	DonePubSub chan bool
+)
 
 type RabbitMQ struct {
 	conn    *amqp.Connection
@@ -69,7 +74,10 @@ func (r *RabbitMQ) PublishSimple(message string) {
 		false,
 		// 是否会自动删除：当最后一个消费者断开后，是否将队列中的消息清除
 		false,
-		// 是否具有排他性，意思只有自己可见，其他人不可用
+		/*
+			是否具有排他性，意思只有自己可见，其他人不可用
+			RabbitMQ:排他性队列（Exclusive Queue) : https://www.cnblogs.com/rader/archive/2012/06/28/2567779.html
+		*/
 		false,
 		// 是否阻塞
 		false,
@@ -150,10 +158,109 @@ func (r *RabbitMQ) ConsumeSimple() {
 	log.Printf("消费者关闭。。。")
 }
 
-// 订阅模式创建 RabbitMQ 实例
+// 订阅模式 Step1：创建 RabbitMQ 实例
 func NewRabbitMQPubSub(exchangeName string) *RabbitMQ {
-	// 创建 RabbitMQ 实例
+	// 和普通模式创建不同，这里不指定队列名，而是指定交换机名
 	rabbitMQ := NewRabbitMq("", exchangeName, "")
+	return rabbitMQ
+}
 
-	return rabbitM
+//订阅模式 Step2：生产消息
+func (r *RabbitMQ) PublishPub(message string) {
+	// 1.尝试创建交换机
+	e := r.channel.ExchangeDeclare(
+		r.Exchange,
+		/*
+			交换机类型：
+				direct Exchange：将消息中的Routing key与该Exchange关联的所有Binding中的Routing key进行比较，如果相等，则发送到该Binding对应的Queue中。
+
+				topic Exchange：将消息中的Routing key与该Exchange关联的所有Binding中的Routing key进行对比，如果匹配上了，则发送到该Binding对应的Queue中。
+
+				fanout Exchange：直接将消息转发到所有binding的对应queue中，这种exchange在路由转发的时候，忽略Routing key。
+
+				headers Exchange：将消息中的headers与该Exchange相关联的所有Binging中的参数进行匹配，如果匹配上了，则发送到该Binding对应的Queue中。
+		*/
+		"fanout",
+		true,
+		false,
+		false,
+		false,
+		nil,
+	)
+	r.failOnError(e, "声明创建交换机失败")
+
+	// 2.发送消息
+	e = r.channel.Publish(
+		r.Exchange,
+		// 在 pub/sub 订阅模式下，这里的key要为空
+		"",
+		false,
+		false,
+		amqp.Publishing{
+			ContentType: "text/plain",
+			Body:        []byte(message),
+		},
+	)
+
+}
+
+// 订阅模式 Step3:消费端代码
+func (r *RabbitMQ) ReceiverSub() {
+	// 1、和生产一样，首先尝试创建交换机
+	e := r.channel.ExchangeDeclare(
+		r.Exchange,
+		//  交换机类型
+		"fanout",
+		true,
+		false,
+		false,
+		false,
+		nil,
+	)
+	r.failOnError(e, "消费端尝试创建交换机失败")
+
+	// 2、尝试创建队列，队列名为空，随机生成队列名
+	queue, e := r.channel.QueueDeclare(
+		"",
+		false,
+		false,
+		true,
+		false,
+		nil,
+	)
+	r.failOnError(e, "消费端尝试创建随机名队列失败")
+
+	// 3、将创建的队列绑定到交换机 exchange 中
+	e = r.channel.QueueBind(
+		queue.Name,
+		// 在 pub/sub 订阅模式下，这里的key要为空
+		"",
+		r.Exchange,
+		false,
+		nil,
+	)
+	r.failOnError(e, "消费端绑定队列和交换机失败")
+
+	messages, e := r.channel.Consume(
+		queue.Name,
+		"",
+		true,
+		false,
+		false,
+		false,
+		nil,
+	)
+
+	DonePubSub = make(chan bool)
+	go func() {
+		for d := range messages {
+			log.Printf("接受到订阅模式下的消息：%s", d.Body)
+		}
+	}()
+
+	log.Printf("订阅模式 Pub/Sub 消费者已开启,队列名:%s，等待消息产生。。。", queue.Name)
+	<-DonePubSub
+
+	r.Destory()
+	log.Printf("订阅模式消费者关闭。。。")
 }
