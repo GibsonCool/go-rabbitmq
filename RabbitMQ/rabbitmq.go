@@ -8,7 +8,7 @@ import (
 
 // url 格式  amqp://账号:密码@rabbitmq服务器地址:端口号/vhost
 const (
-	MQURL = "amqp://double:double@127.0.0.1:5672/test-double"
+	MQURL           = "amqp://double:double@127.0.0.1:5672/test-double"
 	SimpleQueueName = "doubleSimple"
 )
 
@@ -148,4 +148,11 @@ func (r *RabbitMQ) ConsumeSimple() {
 
 	r.Destory()
 	log.Printf("消费者关闭。。。")
+}
+
+// 订阅模式创建 RabbitMQ 实例
+func NewRabbitMQPubSub(exchangeName string) *RabbitMQ {
+	// 创建 RabbitMQ 实例
+	rabbitMQ := NewRabbitMq("", exchangeName, "")
+
 }
