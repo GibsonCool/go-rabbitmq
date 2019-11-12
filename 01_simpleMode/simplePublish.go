@@ -1,12 +1,12 @@
 package main
 
 import (
-	"go-rabbitmq/RabbitMQ"
+	"go-rabbitmq/00_RabbitMQ"
 	"log"
 )
 
 func main() {
-	rabbitMQSimple := RabbitMQ.NewRabbitMQSimple(RabbitMQ.SimpleQueueName)
+	rabbitMQSimple := _0_RabbitMQ.NewRabbitMQSimple(_0_RabbitMQ.SimpleQueueName)
 	rabbitMQSimple.PublishSimple("hello 简单模式消息")
 	log.Println("发送成功")
 }

@@ -2,7 +2,7 @@ package main
 
 import (
 	"fmt"
-	"go-rabbitmq/RabbitMQ"
+	"go-rabbitmq/00_RabbitMQ"
 	"log"
 )
 
@@ -14,7 +14,7 @@ import (
 		从运行的结果可以看出这里的负载均衡策略基本是轮询三个消费端接受
 */
 func main() {
-	rabbitMQSimple := RabbitMQ.NewRabbitMQSimple(RabbitMQ.SimpleQueueName)
+	rabbitMQSimple := _0_RabbitMQ.NewRabbitMQSimple(_0_RabbitMQ.SimpleQueueName)
 	for i := 0; i <= 100; i++ {
 		log.Printf("正在发送第 %d 条消息~~~", i)
 		rabbitMQSimple.PublishSimple(fmt.Sprintf("hello 简单模式消息 index:%d", i))

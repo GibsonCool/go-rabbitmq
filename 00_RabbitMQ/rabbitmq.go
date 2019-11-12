@@ -1,4 +1,4 @@
-package RabbitMQ
+package _0_RabbitMQ
 
 import (
 	"fmt"
@@ -155,4 +155,5 @@ func NewRabbitMQPubSub(exchangeName string) *RabbitMQ {
 	// 创建 RabbitMQ 实例
 	rabbitMQ := NewRabbitMq("", exchangeName, "")
 
+	return rabbitM
 }
