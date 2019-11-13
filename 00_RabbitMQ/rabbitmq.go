@@ -12,11 +12,16 @@ const (
 	SimpleQueueName = "doubleSimple"
 
 	PubSubExchangeName = "newProduct"
+
+	RoutingExchangeName = "exRouting"
+	RoutingKey1         = "ex_one"
+	RoutingKey2         = "ex_two"
 )
 
 var (
-	Done       chan bool
-	DonePubSub chan bool
+	Done        chan bool
+	DonePubSub  chan bool
+	DoneRouting chan bool
 )
 
 type RabbitMQ struct {
@@ -165,7 +170,7 @@ func NewRabbitMQPubSub(exchangeName string) *RabbitMQ {
 	return rabbitMQ
 }
 
-//订阅模式 Step2：生产消息
+// 订阅模式 Step2：生产消息
 func (r *RabbitMQ) PublishPub(message string) {
 	// 1.尝试创建交换机
 	e := r.channel.ExchangeDeclare(
@@ -263,4 +268,98 @@ func (r *RabbitMQ) ReceiverSub() {
 
 	r.Destory()
 	log.Printf("订阅模式消费者关闭。。。")
+}
+
+// 路由模式 Step1:创建实例
+func NewRabbitMQRouting(exchangeName, key string) *RabbitMQ {
+	//路由模式，相对于订阅模式，需要交换机，并且还有路由 key
+	return NewRabbitMq("", exchangeName, key)
+}
+
+// 路由模式 Step2:生产消息
+func (r *RabbitMQ) PublishRouting(message string) {
+	// 1.老样子，先尝试创建交换机
+	e := r.channel.ExchangeDeclare(
+		r.Exchange,
+		//
+		"direct",
+		true,
+		false,
+		false,
+		false,
+		nil,
+	)
+	r.failOnError(e, "路由模式创建交换机失败~")
+
+	// 2.发送消息
+	e = r.channel.Publish(
+		r.Exchange,
+		// 路由模式需要设置 key
+		r.Key,
+		false,
+		false,
+		amqp.Publishing{
+			ContentType: "text/plain",
+			Body:        []byte(message),
+		},
+	)
+}
+
+// 路由模式 Step3:消费消息
+func (r *RabbitMQ) ReceiverRouting() {
+	// 1.试探性创建交换机
+	e := r.channel.ExchangeDeclare(
+		r.Exchange,
+		//
+		"direct",
+		true,
+		false,
+		false,
+		false,
+		nil,
+	)
+	r.failOnError(e, "路由模式接受消息创建交换机失败~")
+
+	// 2.试探性创建队列，不填入队列名，随机生成
+	queue, e := r.channel.QueueDeclare(
+		"", //随机生产队列名称
+		false,
+		false,
+		true,
+		false,
+		nil,
+	)
+	r.failOnError(e, "路由模式接受消息创建队列失败")
+
+	// 3.将队列绑定到交换机中，并且需要加入路由 key
+	e = r.channel.QueueBind(
+		queue.Name,
+		r.Key,
+		r.Exchange,
+		false,
+		nil,
+	)
+
+	msgs, e := r.channel.Consume(
+		queue.Name,
+		"",
+		true,
+		false,
+		false,
+		false,
+		nil,
+	)
+
+	DoneRouting = make(chan bool)
+	go func() {
+		for d := range msgs {
+			log.Printf("路由模式下接受到的消息：%s", d.Body)
+		}
+	}()
+
+	log.Printf("路由模式 routing 消费者已开启,队列名:%s，等待消息产生。。。", queue.Name)
+	<-DoneRouting
+
+	r.Destory()
+	log.Printf("路由模式消费者关闭。。。")
 }
