@@ -16,6 +16,10 @@ const (
 	RoutingExchangeName = "exRouting"
 	RoutingKey1         = "ex_one"
 	RoutingKey2         = "ex_two"
+
+	TopicExchangeName = "exTopic"
+	TopicKey1         = "double.topic.one"
+	TopicKey2         = "double.topic.two"
 )
 
 var (
@@ -362,4 +366,104 @@ func (r *RabbitMQ) ReceiverRouting() {
 
 	r.Destory()
 	log.Printf("路由模式消费者关闭。。。")
+}
+
+// Topic模式 Step1:创建实例
+func NewRabbitMQTopic(exchangeName, key string) *RabbitMQ {
+	//Topic模式，创建和订阅模式一样，需要交换机，并且还有路由 key
+	return NewRabbitMq("", exchangeName, key)
+}
+
+// Topic模式 Step2:生产消息
+func (r *RabbitMQ) PublishTopic(message string) {
+	// 1.老样子，先尝试创建交换机
+	e := r.channel.ExchangeDeclare(
+		r.Exchange,
+		//这里的类型要换成 topic
+		"topic",
+		true,
+		false,
+		false,
+		false,
+		nil,
+	)
+	r.failOnError(e, "Topic模式创建交换机失败~")
+
+	// 2.发送消息
+	e = r.channel.Publish(
+		r.Exchange,
+		// 路由模式需要设置 key
+		r.Key,
+		false,
+		false,
+		amqp.Publishing{
+			ContentType: "text/plain",
+			Body:        []byte(message),
+		},
+	)
+}
+
+// Topic模式 Step3:消费消息
+/*
+	routing_key:必须是由点隔开的一系列的标识符组成。标识符可以是任何东西，但是一般都与消息的某些特性相关
+
+		*可以匹配一个标识符。
+		#可以匹配0个或多个标识符
+*/
+func (r *RabbitMQ) ReceiverTopic() {
+	// 1.试探性创建交换机
+	e := r.channel.ExchangeDeclare(
+		r.Exchange,
+		//
+		"topic",
+		true,
+		false,
+		false,
+		false,
+		nil,
+	)
+	r.failOnError(e, "Topic模式接受消息创建交换机失败~")
+
+	// 2.试探性创建队列，不填入队列名，随机生成
+	queue, e := r.channel.QueueDeclare(
+		"", //随机生产队列名称
+		false,
+		false,
+		true,
+		false,
+		nil,
+	)
+	r.failOnError(e, "Topic模式式接受消息创建队列失败")
+
+	// 3.将队列绑定到交换机中，并且需要加入路由 key
+	e = r.channel.QueueBind(
+		queue.Name,
+		r.Key,
+		r.Exchange,
+		false,
+		nil,
+	)
+
+	msgs, e := r.channel.Consume(
+		queue.Name,
+		"",
+		true,
+		false,
+		false,
+		false,
+		nil,
+	)
+
+	DoneRouting = make(chan bool)
+	go func() {
+		for d := range msgs {
+			log.Printf("Topic模式下接受到的消息：%s", d.Body)
+		}
+	}()
+
+	log.Printf("Topic模式 消费者已开启,队列名:%s，等待消息产生。。。", queue.Name)
+	<-DoneRouting
+
+	r.Destory()
+	log.Printf("Topic模式消费者关闭。。。")
 }
